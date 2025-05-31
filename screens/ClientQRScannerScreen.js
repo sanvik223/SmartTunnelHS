@@ -11,8 +11,7 @@ export default function ClientQRScannerScreen() {
     try {
       const data = JSON.parse(e.data);
       if (data.hostId && data.hostIP && data.hostPort) {
-        Alert.alert("✅ Scanned", `Host ID: ${data.hostId}`);
-
+        Alert.alert("Scanned!", `Host: ${data.hostId}`);
         navigation.navigate("ClientDashboard", {
           scannedHostId: data.hostId,
           scannedIP: data.hostIP,
@@ -22,26 +21,17 @@ export default function ClientQRScannerScreen() {
         Alert.alert("Invalid QR", "Scanned data is not valid.");
       }
     } catch (error) {
-      Alert.alert("Scan Failed", "Could not read QR data.");
+      Alert.alert("Scan Failed", "Could not parse QR data.");
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>📷 Scan Host QR Code</Text>
-      <QRCodeScanner
-        onRead={onSuccess}
-        showMarker={true}
-        reactivate={true}
-        topContent={<Text style={styles.info}>Align QR within frame</Text>}
-        bottomContent={null}
-      />
+      <QRCodeScanner onRead={onSuccess} showMarker={true} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  title: { fontSize: 20, textAlign: 'center', marginTop: 20 },
-  info: { textAlign: 'center', marginTop: 10, color: 'gray' }
+  container: { flex: 1 }
 });
