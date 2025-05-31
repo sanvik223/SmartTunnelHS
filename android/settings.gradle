@@ -1,0 +1,4 @@
+// android/settings.gradle
+rootProject.name = 'SmartTunnelHS'
+
+include ':app'
