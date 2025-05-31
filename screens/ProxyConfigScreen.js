@@ -1,19 +1,23 @@
 // screens/ProxyConfigScreen.js
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
 export default function ProxyConfigScreen() {
-  const [ip, setIP] = useState('');
-  const [port, setPort] = useState('');
+  const navigation = useNavigation();
+  const route = useRoute();
 
-  const connectProxy = () => {
+  const [ip, setIp] = useState(route.params?.scannedIP || '');
+  const [port, setPort] = useState(route.params?.scannedPort || '');
+
+  const saveSettings = () => {
     if (!ip || !port) {
-      Alert.alert("Error", "Please enter IP and Port.");
+      Alert.alert("Error", "IP and Port are required");
       return;
     }
 
-    // ভবিষ্যতে এখান থেকে VPNService / Proxy শুরু হবে
-    Alert.alert("🔗 Proxy Setup", `IP: ${ip}\nPort: ${port}`);
+    Alert.alert("Saved", `Proxy configured:\nhttp://${ip}:${port}`);
+    navigation.navigate("ClientDashboard");
   };
 
   return (
@@ -24,41 +28,27 @@ export default function ProxyConfigScreen() {
         style={styles.input}
         placeholder="Enter Host IP"
         value={ip}
-        onChangeText={setIP}
+        onChangeText={setIp}
       />
       <TextInput
         style={styles.input}
         placeholder="Enter Port"
         value={port}
-        keyboardType="numeric"
         onChangeText={setPort}
+        keyboardType="numeric"
       />
 
-      <TouchableOpacity style={styles.button} onPress={connectProxy}>
-        <Text style={styles.buttonText}>🔗 Connect</Text>
+      <TouchableOpacity style={styles.button} onPress={saveSettings}>
+        <Text style={styles.buttonText}>💾 Save</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 16, backgroundColor: '#fff' },
+  container: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: '#fff' },
   heading: { fontSize: 24, fontWeight: 'bold', marginBottom: 30, textAlign: 'center' },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 15
-  },
-  button: {
-    backgroundColor: '#3F51B5',
-    padding: 14,
-    borderRadius: 8
-  },
-  buttonText: {
-    color: '#fff',
-    textAlign: 'center',
-    fontSize: 16
-  }
+  input: { borderWidth: 1, padding: 12, marginBottom: 16, borderRadius: 8 },
+  button: { backgroundColor: '#4CAF50', padding: 14, borderRadius: 8 },
+  buttonText: { color: '#fff', textAlign: 'center', fontSize: 16 }
 });
