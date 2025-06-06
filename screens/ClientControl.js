@@ -1,148 +1,128 @@
 // screens/ClientControl.js
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Alert } from 'react-native';
 import { ref, onValue, update } from 'firebase/database';
-import { getAuth } from 'firebase/auth';
 import { database } from '../firebaseConfig';
+import { getAuth } from 'firebase/auth';
 
 export default function ClientControl() {
   const [clients, setClients] = useState([]);
-  const auth = getAuth();
-  const hostId = auth.currentUser.uid;
+  const user = getAuth().currentUser;
+  const userId = user?.uid;
 
   useEffect(() => {
-    const requestRef = ref(database, `requests/${hostId}`);
-    const unsubscribe = onValue(requestRef, snapshot => {
-      const data = snapshot.val();
-      if (data) {
-        setClients(Object.entries(data));
-      } else {
-        setClients([]);
-      }
+    if (!userId) return;
+
+    const connRef = ref(database, `connections/${userId}`);
+    const unsubscribe = onValue(connRef, snapshot => {
+      const data = snapshot.val() || {};
+      const clientList = Object.entries(data).map(([id, val]) => ({
+        id,
+        email: val.email || id,
+        mbLimit: val.mbLimit || '',
+        unlimited: val.unlimited || false,
+        blocked: val.blocked || false,
+        speed: val.speed || ''
+      }));
+      setClients(clientList);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [userId]);
 
-  const approveClient = (clientId) => {
-    update(ref(database, `requests/${hostId}/${clientId}`), { approved: true });
-    update(ref(database, `connections/${hostId}/${clientId}`), {
-      approved: true,
-      usage: 0,
-      unlimited: false,
-      blocked: false,
-      speed: '1mbps'
-    });
-    Alert.alert('✅ Approved', `Client ${clientId} approved.`);
+  const handleUpdate = (client) => {
+    const updates = {
+      mbLimit: parseFloat(client.mbLimit),
+      unlimited: client.unlimited,
+      blocked: client.blocked,
+      speed: parseInt(client.speed)
+    };
+    update(ref(database, `connections/${userId}/${client.id}`), updates)
+      .then(() => Alert.alert("✅ Updated", `${client.email} settings saved.`))
+      .catch(() => Alert.alert("❌ Error", "Failed to update client."));
   };
 
-  const toggleBlock = (clientId, blocked) => {
-    update(ref(database, `connections/${hostId}/${clientId}`), { blocked: !blocked });
+  const toggle = (client, field) => {
+    setClients(prev => prev.map(c => (
+      c.id === client.id ? { ...c, [field]: !client[field] } : c
+    )));
   };
 
-  const toggleUnlimited = (clientId, unlimited) => {
-    update(ref(database, `connections/${hostId}/${clientId}`), { unlimited: !unlimited });
-  };
-
-  const changeSpeed = (clientId, speed) => {
-    update(ref(database, `connections/${hostId}/${clientId}`), { speed });
+  const updateField = (client, field, value) => {
+    setClients(prev => prev.map(c => (
+      c.id === client.id ? { ...c, [field]: value } : c
+    )));
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>👥 Connected Clients</Text>
-      {clients.length === 0 ? (
-        <Text style={styles.noClients}>No connection requests yet.</Text>
-      ) : (
-        clients.map(([clientId, client]) => (
-          <View key={clientId} style={styles.card}>
-            <Text style={styles.label}>📧 {client.email}</Text>
-            <Text>ID: {clientId}</Text>
-            <Text>IP: {client.hostIP}</Text>
-            <Text>Port: {client.hostPort}</Text>
+    <FlatList
+      contentContainerStyle={styles.container}
+      data={clients}
+      keyExtractor={(item) => item.id}
+      renderItem={({ item }) => (
+        <View style={styles.card}>
+          <Text style={styles.email}>{item.email}</Text>
 
+          <TextInput
+            style={styles.input}
+            placeholder="MB Limit"
+            keyboardType="numeric"
+            value={item.mbLimit.toString()}
+            onChangeText={(text) => updateField(item, 'mbLimit', text)}
+          />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Speed (kbps)"
+            keyboardType="numeric"
+            value={item.speed.toString()}
+            onChangeText={(text) => updateField(item, 'speed', text)}
+          />
+
+          <View style={styles.switchRow}>
             <TouchableOpacity
-              style={styles.approveBtn}
-              onPress={() => approveClient(clientId)}
-              disabled={client.approved}
+              style={[styles.switchBtn, item.unlimited && styles.activeBtn]}
+              onPress={() => toggle(item, 'unlimited')}
             >
-              <Text style={styles.btnText}>{client.approved ? '✅ Approved' : '✔️ Approve'}</Text>
+              <Text style={styles.switchText}>Unlimited</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.blockBtn}
-              onPress={() => toggleBlock(clientId, client.blocked)}
+              style={[styles.switchBtn, item.blocked && styles.blockedBtn]}
+              onPress={() => toggle(item, 'blocked')}
             >
-              <Text style={styles.btnText}>{client.blocked ? '🟢 Unblock' : '🔴 Block'}</Text>
+              <Text style={styles.switchText}>Block</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.unlimitedBtn}
-              onPress={() => toggleUnlimited(clientId, client.unlimited)}
-            >
-              <Text style={styles.btnText}>{client.unlimited ? '🚫 Limit MB' : '♾️ Unlimited'}</Text>
-            </TouchableOpacity>
-
-            <View style={styles.speedOptions}>
-              <TouchableOpacity onPress={() => changeSpeed(clientId, '1mbps')}>
-                <Text style={styles.speedText}>1Mbps</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => changeSpeed(clientId, '2mbps')}>
-                <Text style={styles.speedText}>2Mbps</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => changeSpeed(clientId, '5mbps')}>
-                <Text style={styles.speedText}>5Mbps</Text>
-              </TouchableOpacity>
-            </View>
           </View>
-        ))
+
+          <TouchableOpacity
+            style={styles.saveBtn}
+            onPress={() => handleUpdate(item)}
+          >
+            <Text style={styles.saveText}>💾 Save</Text>
+          </TouchableOpacity>
+        </View>
       )}
-    </ScrollView>
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, backgroundColor: '#f0f0f0' },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 10 },
-  noClients: { textAlign: 'center', marginTop: 40, fontSize: 16, color: '#888' },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 20,
-    elevation: 3
+  container: { padding: 16, backgroundColor: '#fff' },
+  card: { backgroundColor: '#f0f0f0', padding: 16, borderRadius: 10, marginBottom: 15 },
+  email: { fontWeight: 'bold', fontSize: 16, marginBottom: 8 },
+  input: {
+    backgroundColor: '#fff', padding: 8, borderRadius: 6,
+    borderWidth: 1, borderColor: '#ccc', marginBottom: 10
   },
-  label: { fontWeight: 'bold', marginBottom: 5 },
-  approveBtn: {
-    backgroundColor: '#4CAF50',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 10
+  switchRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  switchBtn: {
+    flex: 1, marginRight: 10, padding: 10, borderRadius: 6,
+    backgroundColor: '#ddd', alignItems: 'center'
   },
-  blockBtn: {
-    backgroundColor: '#f44336',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 10
-  },
-  unlimitedBtn: {
-    backgroundColor: '#2196F3',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 10
-  },
-  btnText: { color: '#fff', textAlign: 'center', fontWeight: 'bold' },
-  speedOptions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 10
-  },
-  speedText: {
-    backgroundColor: '#9C27B0',
-    color: '#fff',
-    padding: 8,
-    borderRadius: 6,
-    textAlign: 'center',
-    fontWeight: 'bold'
-  }
+  activeBtn: { backgroundColor: '#4CAF50' },
+  blockedBtn: { backgroundColor: '#F44336' },
+  switchText: { color: '#fff', fontWeight: 'bold' },
+  saveBtn: { backgroundColor: '#2196F3', padding: 10, borderRadius: 6, alignItems: 'center' },
+  saveText: { color: '#fff', fontWeight: 'bold' }
 });
