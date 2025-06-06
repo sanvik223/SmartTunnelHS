@@ -1,104 +1,148 @@
 // screens/ClientControl.js
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Alert } from 'react-native';
-import { ref, update, onValue } from 'firebase/database';
-import { database } from '../firebaseConfig';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { ref, onValue, update } from 'firebase/database';
 import { getAuth } from 'firebase/auth';
+import { database } from '../firebaseConfig';
 
 export default function ClientControl() {
   const [clients, setClients] = useState([]);
-  const userId = getAuth().currentUser.uid;
+  const auth = getAuth();
+  const hostId = auth.currentUser.uid;
 
   useEffect(() => {
-    const clientRef = ref(database, `connections/${userId}`);
-    const unsubscribe = onValue(clientRef, snapshot => {
-      const data = snapshot.val() || {};
-      const list = Object.entries(data).map(([key, val]) => ({
-        id: key,
-        ...val,
-      }));
-      setClients(list);
+    const requestRef = ref(database, `requests/${hostId}`);
+    const unsubscribe = onValue(requestRef, snapshot => {
+      const data = snapshot.val();
+      if (data) {
+        setClients(Object.entries(data));
+      } else {
+        setClients([]);
+      }
     });
 
     return () => unsubscribe();
   }, []);
 
-  const updateClient = (clientId, changes) => {
-    update(ref(database, `connections/${userId}/${clientId}`), changes)
-      .then(() => Alert.alert('✅ Updated', 'Client updated successfully'))
-      .catch(err => Alert.alert('❌ Error', err.message));
+  const approveClient = (clientId) => {
+    update(ref(database, `requests/${hostId}/${clientId}`), { approved: true });
+    update(ref(database, `connections/${hostId}/${clientId}`), {
+      approved: true,
+      usage: 0,
+      unlimited: false,
+      blocked: false,
+      speed: '1mbps'
+    });
+    Alert.alert('✅ Approved', `Client ${clientId} approved.`);
+  };
+
+  const toggleBlock = (clientId, blocked) => {
+    update(ref(database, `connections/${hostId}/${clientId}`), { blocked: !blocked });
+  };
+
+  const toggleUnlimited = (clientId, unlimited) => {
+    update(ref(database, `connections/${hostId}/${clientId}`), { unlimited: !unlimited });
+  };
+
+  const changeSpeed = (clientId, speed) => {
+    update(ref(database, `connections/${hostId}/${clientId}`), { speed });
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>🛠 Manage Clients</Text>
-      <FlatList
-        data={clients}
-        keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.clientCard}>
-            <Text style={styles.clientText}>📧 {item.email}</Text>
-
-            <TextInput
-              style={styles.input}
-              placeholder="MB Limit (e.g. 100)"
-              keyboardType="numeric"
-              onSubmitEditing={({ nativeEvent }) => updateClient(item.id, {
-                mbLimit: parseInt(nativeEvent.text),
-                unlimited: false
-              })}
-            />
+    <ScrollView style={styles.container}>
+      <Text style={styles.title}>👥 Connected Clients</Text>
+      {clients.length === 0 ? (
+        <Text style={styles.noClients}>No connection requests yet.</Text>
+      ) : (
+        clients.map(([clientId, client]) => (
+          <View key={clientId} style={styles.card}>
+            <Text style={styles.label}>📧 {client.email}</Text>
+            <Text>ID: {clientId}</Text>
+            <Text>IP: {client.hostIP}</Text>
+            <Text>Port: {client.hostPort}</Text>
 
             <TouchableOpacity
-              style={styles.buttonGreen}
-              onPress={() => updateClient(item.id, { unlimited: true })}
+              style={styles.approveBtn}
+              onPress={() => approveClient(clientId)}
+              disabled={client.approved}
             >
-              <Text style={styles.buttonText}>🌐 Unlimited Access</Text>
+              <Text style={styles.btnText}>{client.approved ? '✅ Approved' : '✔️ Approve'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.buttonRed}
-              onPress={() => updateClient(item.id, { blocked: true })}
+              style={styles.blockBtn}
+              onPress={() => toggleBlock(clientId, client.blocked)}
             >
-              <Text style={styles.buttonText}>🚫 Block</Text>
+              <Text style={styles.btnText}>{client.blocked ? '🟢 Unblock' : '🔴 Block'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.buttonBlue}
-              onPress={() => updateClient(item.id, { blocked: false })}
+              style={styles.unlimitedBtn}
+              onPress={() => toggleUnlimited(clientId, client.unlimited)}
             >
-              <Text style={styles.buttonText}>✅ Unblock</Text>
+              <Text style={styles.btnText}>{client.unlimited ? '🚫 Limit MB' : '♾️ Unlimited'}</Text>
             </TouchableOpacity>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Speed (KB/s)"
-              keyboardType="numeric"
-              onSubmitEditing={({ nativeEvent }) => updateClient(item.id, {
-                speedLimit: parseInt(nativeEvent.text)
-              })}
-            />
+            <View style={styles.speedOptions}>
+              <TouchableOpacity onPress={() => changeSpeed(clientId, '1mbps')}>
+                <Text style={styles.speedText}>1Mbps</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => changeSpeed(clientId, '2mbps')}>
+                <Text style={styles.speedText}>2Mbps</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => changeSpeed(clientId, '5mbps')}>
+                <Text style={styles.speedText}>5Mbps</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        )}
-      />
-    </View>
+        ))
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: '#fff' },
-  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 16 },
-  clientCard: { marginBottom: 20, padding: 12, borderRadius: 8, backgroundColor: '#f5f5f5' },
-  clientText: { marginBottom: 8, fontWeight: 'bold', fontSize: 16 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 10,
-    marginBottom: 10,
-    borderRadius: 6
+  container: { padding: 20, backgroundColor: '#f0f0f0' },
+  title: { fontSize: 22, fontWeight: 'bold', marginBottom: 10 },
+  noClients: { textAlign: 'center', marginTop: 40, fontSize: 16, color: '#888' },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 20,
+    elevation: 3
   },
-  buttonGreen: { backgroundColor: '#4CAF50', padding: 10, borderRadius: 6, marginBottom: 8 },
-  buttonRed: { backgroundColor: '#F44336', padding: 10, borderRadius: 6, marginBottom: 8 },
-  buttonBlue: { backgroundColor: '#2196F3', padding: 10, borderRadius: 6, marginBottom: 8 },
-  buttonText: { color: '#fff', textAlign: 'center', fontWeight: 'bold' }
+  label: { fontWeight: 'bold', marginBottom: 5 },
+  approveBtn: {
+    backgroundColor: '#4CAF50',
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 10
+  },
+  blockBtn: {
+    backgroundColor: '#f44336',
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 10
+  },
+  unlimitedBtn: {
+    backgroundColor: '#2196F3',
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 10
+  },
+  btnText: { color: '#fff', textAlign: 'center', fontWeight: 'bold' },
+  speedOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 10
+  },
+  speedText: {
+    backgroundColor: '#9C27B0',
+    color: '#fff',
+    padding: 8,
+    borderRadius: 6,
+    textAlign: 'center',
+    fontWeight: 'bold'
+  }
 });
