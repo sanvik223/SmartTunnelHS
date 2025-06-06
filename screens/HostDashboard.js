@@ -1,12 +1,11 @@
 // screens/HostDashboard.js
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet, Linking, ScrollView } from 'react-native';
-import { database, db } from '../firebaseConfig';
+import { database } from '../firebaseConfig';
 import { ref, onValue, update, remove } from 'firebase/database';
 import { getAuth } from 'firebase/auth';
 import { useNavigation } from '@react-navigation/native';
 
-// 📊 Recharts import
 import { PieChart, Pie, Cell, Tooltip } from 'recharts';
 
 export default function HostDashboard() {
@@ -48,7 +47,7 @@ export default function HostDashboard() {
       const val = snapshot.val() || {};
       const usage = Object.keys(val).map((ip, index) => ({
         name: val[ip].email || ip,
-        value: Math.round((val[ip].mbUsed || 0) / (1024 * 1024)), // MB
+        value: Math.round((val[ip].mbUsed || 0) / (1024 * 1024)),
       }));
       setUsageData(usage);
     });
@@ -123,7 +122,6 @@ export default function HostDashboard() {
         )}
       />
 
-      {/* ✅ Pie Chart Section */}
       <Text style={styles.heading}>📊 Client Usage (MB)</Text>
       <View style={{ alignItems: 'center', marginTop: 10 }}>
         <PieChart width={300} height={250}>
