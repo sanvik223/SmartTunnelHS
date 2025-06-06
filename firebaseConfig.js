@@ -1,7 +1,6 @@
 // firebaseConfig.js
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getDatabase } from 'firebase/database';
+const { initializeApp } = require('firebase/app');
+const { getDatabase } = require('firebase/database');
 
 const firebaseConfig = {
   apiKey: "AIzaSyCSzCHlHivf1kk77F05ZelTuf1uRjz18ds",
@@ -14,6 +13,6 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+const database = getDatabase(app);
 
-export const auth = getAuth(app);
-export const database = getDatabase(app);
+module.exports = { firebaseConfig, database };
