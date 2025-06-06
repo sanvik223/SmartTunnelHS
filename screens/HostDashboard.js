@@ -1,17 +1,24 @@
 // screens/HostDashboard.js
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet, Linking } from 'react-native';
-import { database } from '../firebaseConfig';
+import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet, Linking, ScrollView } from 'react-native';
+import { database, db } from '../firebaseConfig';
 import { ref, onValue, update, remove } from 'firebase/database';
 import { getAuth } from 'firebase/auth';
 import { useNavigation } from '@react-navigation/native';
 
+// 📊 Recharts import
+import { PieChart, Pie, Cell, Tooltip } from 'recharts';
+
 export default function HostDashboard() {
   const [requests, setRequests] = useState([]);
   const [clients, setClients] = useState([]);
+  const [usageData, setUsageData] = useState([]);
+
   const user = getAuth().currentUser;
   const userId = user?.uid;
   const navigation = useNavigation();
+
+  const COLORS = ['#00C49F', '#FF8042', '#FFBB28', '#0088FE', '#FF4567'];
 
   useEffect(() => {
     if (!userId) return;
@@ -37,9 +44,19 @@ export default function HostDashboard() {
       setClients(conList);
     });
 
+    const unsubscribeUsage = onValue(connRef, snapshot => {
+      const val = snapshot.val() || {};
+      const usage = Object.keys(val).map((ip, index) => ({
+        name: val[ip].email || ip,
+        value: Math.round((val[ip].mbUsed || 0) / (1024 * 1024)), // MB
+      }));
+      setUsageData(usage);
+    });
+
     return () => {
       unsubscribeReq();
       unsubscribeCon();
+      unsubscribeUsage();
     };
   }, [userId]);
 
@@ -75,7 +92,7 @@ export default function HostDashboard() {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.heading}>👥 Connected Clients</Text>
       <FlatList
         data={clients}
@@ -106,6 +123,28 @@ export default function HostDashboard() {
         )}
       />
 
+      {/* ✅ Pie Chart Section */}
+      <Text style={styles.heading}>📊 Client Usage (MB)</Text>
+      <View style={{ alignItems: 'center', marginTop: 10 }}>
+        <PieChart width={300} height={250}>
+          <Pie
+            data={usageData}
+            cx={150}
+            cy={100}
+            labelLine={false}
+            outerRadius={80}
+            fill="#8884d8"
+            dataKey="value"
+            label={({ name, value }) => `${name}: ${value}MB`}
+          >
+            {usageData.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+            ))}
+          </Pie>
+          <Tooltip />
+        </PieChart>
+      </View>
+
       <TouchableOpacity
         style={styles.qrButton}
         onPress={() => navigation.navigate("HostQR")}
@@ -126,12 +165,12 @@ export default function HostDashboard() {
       >
         <Text style={styles.qrButtonText}>🛠 Manage Clients</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: '#fff' },
+  container: { padding: 16, backgroundColor: '#fff', paddingBottom: 50 },
   heading: { fontSize: 20, fontWeight: 'bold', marginTop: 20 },
   item: { padding: 10, marginVertical: 5, backgroundColor: '#f0f0f0', borderRadius: 8 },
   buttons: { flexDirection: 'row', marginTop: 5, gap: 10 },
