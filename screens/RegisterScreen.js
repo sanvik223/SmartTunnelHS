@@ -1,54 +1,95 @@
 // screens/RegisterScreen.js
+
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
+import { View, TextInput, Button, StyleSheet, Text, Alert } from 'react-native';
+import { auth, database } from '../firebase/firebaseConfig';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { ref, set } from 'firebase/database';
 
 export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [userType, setUserType] = useState('client'); // 'host' or 'client'
 
-  const handleRegister = () => {
-    const auth = getAuth();
-    createUserWithEmailAndPassword(auth, email, password)
-      .then(() => {
-        Alert.alert('✅ Registration Successful');
-        navigation.navigate('Login');
-      })
-      .catch((error) => {
-        Alert.alert('❌ Error', error.message);
+  const handleRegister = async () => {
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      await set(ref(database, 'users/' + user.uid), {
+        email: user.email,
+        userType: userType
       });
+      Alert.alert("Success", "Account created!");
+      navigation.navigate('Login');
+    } catch (error) {
+      Alert.alert("Registration Error", error.message);
+    }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>🔐 Register</Text>
+      <Text style={styles.title}>Register as</Text>
+      <View style={styles.buttonGroup}>
+        <Button
+          title="Host"
+          onPress={() => setUserType('host')}
+          color={userType === 'host' ? '#007bff' : 'gray'}
+        />
+        <Button
+          title="Client"
+          onPress={() => setUserType('client')}
+          color={userType === 'client' ? '#007bff' : 'gray'}
+        />
+      </View>
       <TextInput
-        style={styles.input}
         placeholder="Email"
         onChangeText={setEmail}
-        autoCapitalize="none"
+        value={email}
+        style={styles.input}
+        keyboardType="email-address"
       />
       <TextInput
-        style={styles.input}
         placeholder="Password"
         onChangeText={setPassword}
+        value={password}
+        style={styles.input}
         secureTextEntry
       />
-      <TouchableOpacity style={styles.button} onPress={handleRegister}>
-        <Text style={styles.buttonText}>Register</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-        <Text style={styles.link}>Already have an account? Login</Text>
-      </TouchableOpacity>
+      <Button title="Register" onPress={handleRegister} />
+      <Text style={styles.link} onPress={() => navigation.navigate('Login')}>
+        Already have an account? Login
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, justifyContent: 'center' },
-  title: { fontSize: 24, marginBottom: 20, fontWeight: 'bold', textAlign: 'center' },
-  input: { borderWidth: 1, padding: 10, marginBottom: 10, borderRadius: 5 },
-  button: { backgroundColor: '#2196F3', padding: 12, borderRadius: 5 },
-  buttonText: { color: '#fff', textAlign: 'center' },
-  link: { color: '#2196F3', textAlign: 'center', marginTop: 10 }
+  container: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center'
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    marginBottom: 10,
+    padding: 10,
+    borderRadius: 5
+  },
+  buttonGroup: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    textAlign: 'center'
+  },
+  link: {
+    marginTop: 20,
+    color: 'blue',
+    textAlign: 'center'
+  }
 });
