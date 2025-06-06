@@ -1,57 +1,61 @@
-// screens/LoginScreen.js
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { View, TextInput, Button, StyleSheet, Text, Alert } from 'react-native';
+import { auth, database } from '../firebase/firebaseConfig';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { ref, get } from 'firebase/database';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  const handleLogin = () => {
-    const auth = getAuth();
-    signInWithEmailAndPassword(auth, email, password)
-      .then(() => {
-        Alert.alert('✅ Login Successful');
-        navigation.navigate('ChooseRole'); // ক্লায়েন্ট না হোস্ট তা বেছে নেবে
-      })
-      .catch((error) => {
-        Alert.alert('❌ Error', error.message);
-      });
+  const handleLogin = async () => {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      const userRef = ref(database, 'users/' + user.uid);
+      const snapshot = await get(userRef);
+      if (snapshot.exists()) {
+        const userType = snapshot.val().userType;
+        navigation.navigate(userType === 'host' ? 'HostDashboard' : 'ClientDashboard');
+      } else {
+        Alert.alert("Error", "User type not found");
+      }
+    } catch (error) {
+      Alert.alert("Login Error", error.message);
+    }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>🔐 Login</Text>
+      <Text style={styles.title}>Login</Text>
       <TextInput
-        style={styles.input}
         placeholder="Email"
         onChangeText={setEmail}
-        autoCapitalize="none"
+        value={email}
+        style={styles.input}
+        keyboardType="email-address"
       />
       <TextInput
-        style={styles.input}
         placeholder="Password"
         onChangeText={setPassword}
+        value={password}
+        style={styles.input}
         secureTextEntry
       />
-      <TouchableOpacity style={styles.button} onPress={handleLogin}>
-        <Text style={styles.buttonText}>Login</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-        <Text style={styles.link}>Don't have an account? Register</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
-        <Text style={styles.link}>Forgot Password?</Text>
-      </TouchableOpacity>
+      <Button title="Login" onPress={handleLogin} />
+      <Text style={styles.link} onPress={() => navigation.navigate('ForgotPassword')}>
+        Forgot Password?
+      </Text>
+      <Text style={styles.link} onPress={() => navigation.navigate('Register')}>
+        Don’t have an account? Register
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, justifyContent: 'center' },
-  title: { fontSize: 24, marginBottom: 20, fontWeight: 'bold', textAlign: 'center' },
-  input: { borderWidth: 1, padding: 10, marginBottom: 10, borderRadius: 5 },
-  button: { backgroundColor: '#4CAF50', padding: 12, borderRadius: 5 },
-  buttonText: { color: '#fff', textAlign: 'center' },
-  link: { color: '#4CAF50', textAlign: 'center', marginTop: 10 }
+  input: { borderWidth: 1, borderColor: '#ccc', marginBottom: 10, padding: 10, borderRadius: 5 },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  link: { marginTop: 15, color: 'blue', textAlign: 'center' }
 });
