@@ -3,7 +3,7 @@ const http = require('http');
 const net = require('net');
 const url = require('url');
 const { initializeApp } = require('firebase/app');
-const { getDatabase, ref, get, set, update } = require('firebase/database');
+const { getDatabase, ref, get, update } = require('firebase/database');
 const { firebaseConfig } = require('./firebaseConfig');
 
 initializeApp(firebaseConfig);
@@ -70,7 +70,7 @@ server.on('connect', async (req, clientSocket, head) => {
         mbUsed: used + bytesTransferred,
         lastActive: Date.now()
       });
-    }, 5000); // Update every 5 sec
+    }, 5000); // Update every 5 seconds
 
     serverSocket.on('data', chunk => {
       bytesTransferred += chunk.length;
@@ -86,5 +86,5 @@ server.on('connect', async (req, clientSocket, head) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Proxy server running on port ${PORT}`);
+  console.log(`🚀 Proxy server running on port ${PORT}`);
 });
