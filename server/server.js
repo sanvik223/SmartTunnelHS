@@ -1,111 +1,157 @@
-// server.js
-const http = require('http');
-const net = require('net');
-const url = require('url');
-const { initializeApp } = require('firebase/app');
-const { getAuth, signInWithEmailAndPassword } = require('firebase/auth');
-const { getDatabase, ref, get, update } = require('firebase/database');
-const { firebaseConfig } = require('./firebaseConfig');
+const http = require("http");
+const net = require("net");
+const url = require("url");
+const { initializeApp } = require("firebase/app");
+const {
+  getDatabase,
+  ref,
+  onValue,
+  set,
+  update
+} = require("firebase/database");
+const {
+  getAuth,
+  signInWithEmailAndPassword
+} = require("firebase/auth");
+const { firebaseConfig, hostCredentials } = require("./firebaseConfig");
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 const auth = getAuth(app);
-const db = getDatabase();
 
-const HOST_EMAIL = 'your-host-email@example.com'; // 🔁 Change this
-const HOST_PASSWORD = 'your-password'; // 🔁 Change this
-const PORT = 8080;
+const LOCAL_PORT = 8080;
+const PUBLIC_PORT = 8081;
 
-// 🔐 Login the Host before starting the server
-signInWithEmailAndPassword(auth, HOST_EMAIL, HOST_PASSWORD)
+// Login to Firebase using host credentials from firebaseConfig.js
+signInWithEmailAndPassword(auth, hostCredentials.email, hostCredentials.password)
   .then((userCredential) => {
     const user = userCredential.user;
     const HOST_ID = user.uid;
-    console.log(`✅ Authenticated as Host: ${HOST_ID}`);
-    startProxyServer(HOST_ID);
+    console.log("✅ Firebase Logged in as Host:", HOST_ID);
+
+    // Create HTTP Proxy Server
+    const proxyServer = http.createServer((req, res) => {
+      const clientIP = req.socket.remoteAddress;
+      const clientID = clientIP.replace(/[:.]/g, "_");
+      const parsedUrl = url.parse(req.url);
+
+      const clientRef = ref(db, `hosts/${HOST_ID}/clients/${clientID}`);
+
+      onValue(clientRef, (snapshot) => {
+        const data = snapshot.val();
+
+        if (data && data.status === "approved" && !data.blocked) {
+          const limitMB = data.limitMB;
+          const usedMB = data.usedMB || 0;
+          const unlimited = data.unlimited;
+
+          if (!unlimited && usedMB >= limitMB) {
+            res.writeHead(403);
+            res.end("Usage limit exceeded");
+            return;
+          }
+
+          const options = {
+            hostname: parsedUrl.hostname,
+            port: parsedUrl.port || 80,
+            path: parsedUrl.path,
+            method: req.method,
+            headers: req.headers
+          };
+
+          const proxyReq = http.request(options, (proxyRes) => {
+            let totalBytes = 0;
+
+            res.writeHead(proxyRes.statusCode, proxyRes.headers);
+
+            proxyRes.on("data", (chunk) => {
+              totalBytes += chunk.length;
+              res.write(chunk);
+            });
+
+            proxyRes.on("end", () => {
+              res.end();
+
+              const newUsedMB = usedMB + totalBytes / (1024 * 1024);
+              update(clientRef, { usedMB: newUsedMB });
+
+              if (!unlimited && newUsedMB >= limitMB) {
+                update(clientRef, { blocked: true });
+              }
+            });
+          });
+
+          proxyReq.on("error", (err) => {
+            res.writeHead(500);
+            res.end("Proxy Error");
+          });
+
+          req.pipe(proxyReq);
+        } else {
+          res.writeHead(403);
+          res.end("Access Denied");
+        }
+      }, { onlyOnce: true });
+    });
+
+    proxyServer.listen(LOCAL_PORT, () => {
+      console.log(`🚀 Local Proxy Server running on port ${LOCAL_PORT}`);
+    });
+
+    // Create Public Proxy Server (for mobile data or internet share)
+    const publicProxyServer = net.createServer((clientSocket) => {
+      const clientIP = clientSocket.remoteAddress;
+      const clientID = clientIP.replace(/[:.]/g, "_");
+      const clientRef = ref(db, `hosts/${HOST_ID}/clients/${clientID}`);
+
+      onValue(clientRef, (snapshot) => {
+        const data = snapshot.val();
+
+        if (data && data.status === "approved" && !data.blocked) {
+          const limitMB = data.limitMB;
+          const usedMB = data.usedMB || 0;
+          const unlimited = data.unlimited;
+
+          if (!unlimited && usedMB >= limitMB) {
+            clientSocket.end("Usage limit exceeded");
+            return;
+          }
+
+          const serverSocket = net.connect(80, "example.com", () => {
+            clientSocket.pipe(serverSocket);
+            serverSocket.pipe(clientSocket);
+          });
+
+          let totalBytes = 0;
+
+          clientSocket.on("data", (chunk) => {
+            totalBytes += chunk.length;
+          });
+
+          clientSocket.on("end", () => {
+            const newUsedMB = usedMB + totalBytes / (1024 * 1024);
+            update(clientRef, { usedMB: newUsedMB });
+
+            if (!unlimited && newUsedMB >= limitMB) {
+              update(clientRef, { blocked: true });
+            }
+          });
+
+          serverSocket.on("error", () => {
+            clientSocket.end("Server Error");
+          });
+        } else {
+          clientSocket.end("Access Denied");
+        }
+      }, { onlyOnce: true });
+    });
+
+    publicProxyServer.listen(PUBLIC_PORT, () => {
+      console.log(`🌐 Public Proxy Server running on port ${PUBLIC_PORT}`);
+    });
+
   })
   .catch((error) => {
-    console.error('❌ Login failed:', error.message);
-    process.exit(1);
+    console.error("❌ Firebase Login Failed:", error.message);
   });
-
-function startProxyServer(HOST_ID) {
-  const server = http.createServer();
-
-  server.on('connect', async (req, clientSocket, head) => {
-    const { port, hostname } = url.parse(`http://${req.url}`);
-    const clientIP = clientSocket.remoteAddress.replace('::ffff:', '');
-
-    const clientRef = ref(db, `connections/${HOST_ID}/${clientIP}`);
-    const snap = await get(clientRef);
-
-    if (!snap.exists()) {
-      clientSocket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
-      console.log(`❌ Unknown client IP: ${clientIP}`);
-      return;
-    }
-
-    const clientData = snap.val();
-    const allowed = clientData.approved;
-    const limitMB = clientData.mbLimit || 0;
-    const usedMB = clientData.mbUsed || 0;
-    const unlimited = clientData.unlimited || false;
-    const blocked = clientData.blocked || false;
-    const maxSpeedKBps = clientData.speedKBps || 0;
-
-    if (!allowed || blocked) {
-      clientSocket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
-      console.log(`❌ Access denied for ${clientIP}`);
-      return;
-    }
-
-    if (!unlimited && usedMB >= limitMB * 1024 * 1024) {
-      await update(clientRef, { blocked: true });
-      clientSocket.end('HTTP/1.1 403 Limit Exceeded\r\n\r\n');
-      console.log(`🚫 MB limit exceeded for ${clientIP}`);
-      return;
-    }
-
-    const serverSocket = net.connect(port || 80, hostname, () => {
-      clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
-      serverSocket.write(head);
-      serverSocket.pipe(clientSocket);
-      clientSocket.pipe(serverSocket);
-
-      let bytesTransferred = 0;
-      const startTime = Date.now();
-
-      const interval = setInterval(async () => {
-        const seconds = (Date.now() - startTime) / 1000;
-        const speed = (bytesTransferred / 1024) / seconds;
-
-        if (maxSpeedKBps > 0 && speed > maxSpeedKBps) {
-          clientSocket.end();
-          serverSocket.end();
-          clearInterval(interval);
-          console.log(`🐢 Speed limit exceeded for ${clientIP}`);
-          return;
-        }
-
-        await update(clientRef, {
-          mbUsed: usedMB + bytesTransferred,
-          lastActive: Date.now()
-        });
-      }, 5000);
-
-      serverSocket.on('data', chunk => {
-        bytesTransferred += chunk.length;
-      });
-
-      clientSocket.on('close', () => clearInterval(interval));
-      serverSocket.on('close', () => clearInterval(interval));
-    });
-
-    serverSocket.on('error', () => {
-      clientSocket.end('HTTP/1.1 500 Internal Error\r\n\r\n');
-    });
-  });
-
-  server.listen(PORT, () => {
-    console.log(`🚀 Proxy server running on port ${PORT}`);
-  });
-}
