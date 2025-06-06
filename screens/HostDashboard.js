@@ -1,17 +1,20 @@
 // screens/HostDashboard.js
+
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet, Linking, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet, ScrollView } from 'react-native';
 import { database } from '../firebaseConfig';
 import { ref, onValue, update, remove } from 'firebase/database';
 import { getAuth } from 'firebase/auth';
 import { useNavigation } from '@react-navigation/native';
 
 import { PieChart, Pie, Cell, Tooltip } from 'recharts';
+import Nodejs from 'nodejs-mobile-react-native';
 
 export default function HostDashboard() {
   const [requests, setRequests] = useState([]);
   const [clients, setClients] = useState([]);
   const [usageData, setUsageData] = useState([]);
+  const [isServerRunning, setIsServerRunning] = useState(false);
 
   const user = getAuth().currentUser;
   const userId = user?.uid;
@@ -74,19 +77,23 @@ export default function HostDashboard() {
     Alert.alert('❌ Rejected', 'Client request removed.');
   };
 
-  const startServer = async () => {
-    if (!userId) {
-      Alert.alert('Error', 'User not logged in');
+  const startNodeServer = () => {
+    if (isServerRunning) {
+      Alert.alert('Server is already running');
       return;
     }
 
-    const command = `node /storage/emulated/0/SmartTunnel/server.js ${userId}`;
-
     try {
-      await Linking.openURL(`termux://new_command?command=${encodeURIComponent(command)}`);
+      Nodejs.start('main.js');
+      Nodejs.channel.addListener('message', (msg) => {
+        console.log('From Node:', msg);
+      }, this);
+
+      setIsServerRunning(true);
+      Alert.alert('✅ Proxy Server Started', 'Node.js server is now running.');
     } catch (error) {
-      Alert.alert('Error', 'Failed to open Termux or run command.');
       console.error(error);
+      Alert.alert('❌ Error', 'Failed to start Node.js server');
     }
   };
 
@@ -152,7 +159,7 @@ export default function HostDashboard() {
 
       <TouchableOpacity
         style={styles.startButton}
-        onPress={startServer}
+        onPress={startNodeServer}
       >
         <Text style={styles.qrButtonText}>🧩 Start Proxy Server</Text>
       </TouchableOpacity>
